@@ -30,7 +30,7 @@ def _make_worpress():
     ]
     wpurl = WORDPRESS_DL_URL.format(WORDPRESS_VERSION)
     wpcontent = '/var/www/wordpress/wp-content'
-    with DockerFile('ubuntu:trusty') as df:
+    with DockerFile('debian:jessie') as df:
         df.volumes = ['{}/uploads'.format(wpcontent)]
         df.expose = '80'
         df.command = '/run.sh'
