@@ -1,0 +1,13 @@
+#!/bin/bash
+
+PYTHON=python3
+cd `dirname $0`
+
+if [ ! -d "env" ]; then
+    echo "No virtualenv. Creating one"
+    $PYTHON -m venv env
+    ./env/bin/pip install docker-map
+fi
+
+./env/bin/python manage.py "$@"
+
