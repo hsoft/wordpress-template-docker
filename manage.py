@@ -6,7 +6,8 @@ from cmds import start, stop, make
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--verbose',
+        '-v, --verbose',
+        dest='verbose',
         action='store_true',
         help="Make output more verbose",
     )
