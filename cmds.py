@@ -1,4 +1,5 @@
 from dockermap.api import DockerClientWrapper, DockerFile, ContainerMap, MappingDockerClient
+from dockermap.map.policy.base import BasePolicy
 from dockermap.shortcuts import chmod
 
 #--- Config
@@ -16,7 +17,7 @@ MARIADB_IMGNAME = '{}-mariadb'.format(PROJECT_NAME)
 def _get_client():
     return DockerClientWrapper('unix://var/run/docker.sock')
 
-def _make_worpress():
+def _make_worpress(nocache):
     APT_DEPS = [
         'curl',
         'zip',
@@ -60,32 +61,36 @@ def _make_worpress():
         df.add_file('conf/wordpress_apache.conf', '/etc/apache2/sites-enabled/000-default.conf')
         df.add_file('conf/wordpress_run.sh', '/run.sh')
         df.run(chmod('+x', '/run.sh'))
-        _get_client().build_from_file(df, WORDPRESS_IMGNAME)
+        _get_client().build_from_file(df, WORDPRESS_IMGNAME, rm=True, nocache=nocache)
 
-def _make_mariadb():
+def _make_mariadb(nocache):
     with DockerFile('mariadb') as df:
         df.prefix('ENV', 'MYSQL_ROOT_PASSWORD', DBPASS)
         df.prefix('ENV', 'MYSQL_DATABASE', DBNAME)
-        _get_client().build_from_file(df, MARIADB_IMGNAME)
+        _get_client().build_from_file(df, MARIADB_IMGNAME, rm=True, nocache=nocache)
 
 def _get_container_map():
     return ContainerMap(PROJECT_NAME, {
         'wordpress': {
             'image': WORDPRESS_IMGNAME,
             'links': 'mariadb',
+            'attaches': 'uploads',
             'exposes': {80: 80},
         },
         'mariadb': {
             'image': MARIADB_IMGNAME,
+        },
+        'volumes': {
+            'uploads': '/var/www/wordpress/wp-content/uploads',
         },
     })
 
 #--- Public
 def make(target=None, nocache=False):
     print("Building Wordpress image")
-    _make_worpress()
+    _make_worpress(nocache=nocache)
     print("Building Database image")
-    _make_mariadb()
+    _make_mariadb(nocache=nocache)
     print("Done!")
 
 def start(port):
@@ -95,16 +100,20 @@ def start(port):
     print("Done!")
 
 def stop(clean=False):
-    cmap = _get_container_map()
-    mapclient = MappingDockerClient(cmap, _get_client())
+    NORMAL_CONTAINERS = ['wordpress']
+    PERSISTENT_CONTAINERS = ['mariadb']
+    VOLUMES = ['uploads']
+    client = _get_client()
     print("Stopping instances...")
-    for container in ['wordpress', 'mariadb']:
-        mapclient.stop(container)
-    for container in ['wordpress']:
-        mapclient.remove(container)
+    for name in NORMAL_CONTAINERS + PERSISTENT_CONTAINERS:
+        client.stop(BasePolicy.cname(PROJECT_NAME, name))
+    for name in NORMAL_CONTAINERS:
+        client.remove_container(BasePolicy.cname(PROJECT_NAME, name))
     if clean:
         print("Cleaning instances...")
-        for container in ['mariadb']:
-            mapclient.remove(container)
+        for name in PERSISTENT_CONTAINERS:
+            client.remove_container(BasePolicy.cname(PROJECT_NAME, name))
+        for name in VOLUMES:
+            client.remove_container(BasePolicy.aname(PROJECT_NAME, name))
     print("Done!")
 
