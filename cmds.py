@@ -1,3 +1,5 @@
+import os
+
 from dockermap.api import DockerClientWrapper, DockerFile, ContainerMap, MappingDockerClient
 from dockermap.map.policy.base import BasePolicy
 from dockermap.shortcuts import chmod
@@ -56,6 +58,8 @@ def _make_worpress(nocache):
         ]))
         # remove useless stuff from WP
         df.run('rm {}/plugins/hello.php'.format(wpcontent))
+        # add theme
+        df.add_file('theme', '{}/themes/local_theme'.format(wpcontent))
         # WP/apache config
         df.run('a2enmod rewrite')
         df.add_file('conf/wordpress_apache.conf', '/etc/apache2/sites-enabled/000-default.conf')
@@ -69,8 +73,8 @@ def _make_mariadb(nocache):
         df.prefix('ENV', 'MYSQL_DATABASE', DBNAME)
         _get_client().build_from_file(df, MARIADB_IMGNAME, rm=True, nocache=nocache)
 
-def _get_container_map():
-    return ContainerMap(PROJECT_NAME, {
+def _get_container_map(liveedit=False):
+    result = ContainerMap(PROJECT_NAME, {
         'wordpress': {
             'image': WORDPRESS_IMGNAME,
             'links': 'mariadb',
@@ -84,6 +88,11 @@ def _get_container_map():
             'uploads': '/var/www/wordpress/wp-content/uploads',
         },
     })
+    if liveedit:
+        result.volumes.livetheme = '/var/www/wordpress/wp-content/themes/local_theme'
+        result.host.livetheme = os.path.abspath('theme')
+        result.containers['wordpress'].binds += [('livetheme', 'ro')]
+    return result
 
 #--- Public
 def make(target=None, nocache=False):
@@ -93,13 +102,15 @@ def make(target=None, nocache=False):
     _make_mariadb(nocache=nocache)
     print("Done!")
 
-def start(port):
-    cmap = _get_container_map()
+def start(port, liveedit):
+    cmap = _get_container_map(liveedit=liveedit)
     print("Starting website on http://localhost:80")
     MappingDockerClient(cmap, _get_client()).startup('wordpress')
     print("Done!")
 
 def stop(clean=False):
+    # We use a "manual approach" here because docker-map's approach is way too complicated for
+    # our needs.
     NORMAL_CONTAINERS = ['wordpress']
     PERSISTENT_CONTAINERS = ['mariadb']
     VOLUMES = ['uploads']

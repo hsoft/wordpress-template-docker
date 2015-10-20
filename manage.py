@@ -36,6 +36,11 @@ def get_parser():
         default='80',
         help="Port to serve the site onto",
     )
+    subparser.add_argument(
+        '--liveedit',
+        action='store_true',
+        help="Binds theme directly to host, allowing edits to go live into the container",
+    )
     subparser = subparsers.add_parser(
         'stop',
         help="Kill containers that run the website"
@@ -55,7 +60,7 @@ def main(argv=None):
     if args.cmd == 'make':
         make(target=args.target, nocache=bool(args.no_cache))
     elif args.cmd == 'start':
-        start(args.port)
+        start(port=args.port, liveedit=args.liveedit)
     elif args.cmd == 'stop':
         stop(clean=args.clean)
     else:
