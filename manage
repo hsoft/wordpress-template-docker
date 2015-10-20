@@ -6,7 +6,8 @@ cd `dirname $0`
 if [ ! -d "env" ]; then
     echo "No virtualenv. Creating one"
     $PYTHON -m venv env
-    ./env/bin/pip install docker-map
+    # Temporary, until https://github.com/merll/docker-map/pull/10 is merged
+    ./env/bin/pip install -e git+https://github.com/hsoft/docker-map.git@python3#egg=docker-map
 fi
 
 ./env/bin/python manage.py "$@"
