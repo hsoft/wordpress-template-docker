@@ -8,6 +8,9 @@ from dockermap.shortcuts import chmod
 PROJECT_NAME = 'myproj'
 WORDPRESS_DL_URL = 'https://wordpress.org/wordpress-{}.zip'
 WORDPRESS_VERSION = '4.3.1'
+WORDPRESS_PLUGINS = [
+    ('theme-check', '20150818.1'),
+]
 DBNAME = PROJECT_NAME
 DBUSER = 'root'
 DBPASS = 'whatever' # The DB container is never publicly exposed, so this password isn't really sensitive.
@@ -30,10 +33,11 @@ def _make_worpress(nocache):
         'mysql-client',
         'gettext',
     ]
+    WORDPRESS_PLUGINS_DL_URL = 'https://downloads.wordpress.org/plugin/{slug}.{version}.zip'
     wpurl = WORDPRESS_DL_URL.format(WORDPRESS_VERSION)
-    wpcontent = '/var/www/wordpress/wp-content'
+    wpprefix = '/var/www/wordpress'
     with DockerFile('debian:jessie') as df:
-        df.volumes = ['{}/uploads'.format(wpcontent)]
+        df.volumes = ['{}/wp-content/uploads'.format(wpprefix)]
         df.expose = '80'
         df.command = '/run.sh'
         # Download and install
@@ -46,21 +50,31 @@ def _make_worpress(nocache):
         # If we trust the source, we can trust that the content is not malicious.
         assert wpurl.startswith('https')
         df.run(' && '.join([
-            'curl -o wordpress.zip -SL {}'.format(wpurl),
+            'curl -o wordpress.zip -sSL {}'.format(wpurl),
             'unzip wordpress.zip -d /var/www',
             'rm wordpress.zip',
-            'chown -R www-data:www-data /var/www/wordpress',
-        ]))
-        df.run('cd / && curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar')
-        # setup DB
-        df.run(' && '.join([
-            'cd /var/www/wordpress',
-            'php /wp-cli.phar --allow-root core config --dbhost=mariadb --dbname={} --dbuser={} --dbpass={} --skip-check'.format(DBNAME, DBUSER, DBPASS),
         ]))
         # remove useless stuff from WP
-        df.run('rm {}/plugins/hello.php'.format(wpcontent))
+        df.run('rm {}/wp-content/plugins/hello.php'.format(wpprefix))
+        # install plugins. we don't use wp-cli because installing a plugin with it requires the DB
+        for (pluginname, version) in WORDPRESS_PLUGINS:
+            url = WORDPRESS_PLUGINS_DL_URL.format(slug=pluginname, version=version)
+            df.run(' && '.join([
+                'curl -o {slug}.zip -sSL {url}'.format(slug=pluginname, url=url),
+                'unzip {slug}.zip -d {wpprefix}/wp-content/plugins'.format(slug=pluginname, wpprefix=wpprefix),
+                'rm {slug}.zip'.format(slug=pluginname),
+            ]))
+        # wpcli setup
+        df.run('cd / && curl -s -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar')
+        # setup DB
+        df.run(' && '.join([
+            'cd {}'.format(wpprefix),
+            'php /wp-cli.phar --allow-root core config --dbhost=mariadb --dbname={} --dbuser={} --dbpass={} --skip-check'.format(DBNAME, DBUSER, DBPASS),
+        ]))
         # add theme
-        df.add_file('theme', '{}/themes/local_theme'.format(wpcontent))
+        df.add_file('theme', '{}/wp-content/themes/local_theme'.format(wpprefix))
+        # fix permissions
+        df.run('chown -R www-data:www-data {}'.format(wpprefix))
         # WP/apache config
         df.run('a2enmod rewrite')
         df.add_file('conf/wordpress_apache.conf', '/etc/apache2/sites-enabled/000-default.conf')
