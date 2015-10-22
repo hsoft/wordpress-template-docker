@@ -8,7 +8,6 @@ from dockermap.shortcuts import chmod
 PROJECT_NAME = 'myproj'
 WORDPRESS_DL_URL = 'https://wordpress.org/wordpress-{}.zip'
 WORDPRESS_VERSION = '4.3.1'
-WORDPRESS_MD5 = '00508b83cabc79c7d890ad9a905a989b'
 DBNAME = PROJECT_NAME
 DBUSER = 'root'
 DBPASS = 'whatever' # The DB container is never publicly exposed, so this password isn't really sensitive.
@@ -43,9 +42,11 @@ def _make_worpress(nocache):
             'DEBIAN_FRONTEND=noninteractive apt-get -yq install %s' % ' '.join(APT_DEPS),
             'rm -rf /var/lib/apt/lists/*',
         ]))
+        # We don't do checksums because they're redundant. We already download through HTTPS.
+        # If we trust the source, we can trust that the content is not malicious.
+        assert wpurl.startswith('https')
         df.run(' && '.join([
             'curl -o wordpress.zip -SL {}'.format(wpurl),
-            'echo "{} *wordpress.zip" | md5sum -c -'.format(WORDPRESS_MD5),
             'unzip wordpress.zip -d /var/www',
             'rm wordpress.zip',
             'chown -R www-data:www-data /var/www/wordpress',
